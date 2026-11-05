@@ -80,7 +80,7 @@ make testar                                        # usa matrices/teste_10x10.mt
 
 `src/parte2.cpp` resolve o sistema com solução exata `x = (1, ..., 1)` por LU densa, Cholesky denso,
 LU em banda, Cholesky em banda e Thomas, e compara cada solução com a da rotina correspondente da LAPACK.
-Um método que não se aplica à matriz aparece com o motivo. Os métodos estão em `src/metodos.{hpp,cpp}`.
+Um método que não se aplica à matriz aparece com o motivo. Os métodos estão em `src/parte2.{hpp,cpp}`.
 
 `matrices/teste_10x10.mtx` é uma matriz tridiagonal SPD, escolhida para funcionar em todos os métodos.
 Ela não fica no repositório, como as demais matrizes (ver `.gitignore`). Para recriá-la, grave em
@@ -113,7 +113,7 @@ Ela não fica no repositório, como as demais matrizes (ver `.gitignore`). Para 
 ## Parte 3 – Reordenamento RCM
 
 ```bash
-make parte3 MATRIZ=matrices/bcsstk14.mtx    # bandas e armazenamento antes e depois: results/parte3.csv
+make parte3 MATRIZ=matrices/bcsstk14.mtx    # bandas e armazenamento: results/parte3.csv; tempos: results/parte3_tempos.csv
 make spy_rcm MATRIZ=matrices/bcsstk14.mtx   # padrões lado a lado: figures/rcm_bcsstk14.png
 ```
 
@@ -121,3 +121,8 @@ make spy_rcm MATRIZ=matrices/bcsstk14.mtx   # padrões lado a lado: figures/rcm_
 (uma aresta sem direção para cada `a_ij != 0`, `i != j`), e forma `PAPᵀ`. Em `perm`, `perm[k]` é a linha da matriz
 original que passa a ocupar a posição `k`. O programa `src/parte3.cpp` confere que `(PAPᵀ)(Px) = Pb` e grava a
 permutação em `results/rcm_<matriz>.txt`, que é usada pelo `scripts/spy_rcm.py`.
+
+O programa também resolve o sistema reordenado nas formas densa e em banda, com Cholesky se a matriz for SPD e com
+LU nos outros casos, e reporta a mediana de 5 execuções. O ganho previsto vem das contagens de operações:
+`(1/3)m³ ÷ m·b²` no Cholesky e `(2/3)m³ ÷ 2m·b_I·b_S` na LU. Os erros são medidos no sistema original, depois de
+recuperar `x` a partir de `Px`.

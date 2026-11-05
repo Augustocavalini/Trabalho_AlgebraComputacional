@@ -34,14 +34,14 @@ $(BUILD)/parte1: src/parte1.cpp src/matrix.hpp $(COMMON) | $(BUILD)
 $(BUILD)/parte2.o: src/parte2.cpp src/parte2.hpp src/matrix.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
 
-$(BUILD)/testar_parte2: src/testar_parte2.cpp src/parte2.hpp src/matrix.hpp $(BUILD)/parte2.o $(COMMON) | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Isrc src/testar_parte2.cpp $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
+$(BUILD)/testar_metodos: src/testar_metodos.cpp src/parte2.hpp src/matrix.hpp $(BUILD)/parte2.o $(COMMON) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc src/testar_metodos.cpp $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
 
 $(BUILD)/rcm.o: src/rcm.cpp src/rcm.hpp src/matrix.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
 
-$(BUILD)/parte3: src/parte3.cpp src/rcm.hpp src/matrix.hpp $(BUILD)/rcm.o $(COMMON) | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Isrc src/parte3.cpp $(BUILD)/rcm.o $(COMMON) -o $@ $(LDLIBS)
+$(BUILD)/parte3: src/parte3.cpp src/rcm.hpp src/parte2.hpp src/matrix.hpp $(BUILD)/rcm.o $(BUILD)/parte2.o $(COMMON) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc src/parte3.cpp $(BUILD)/rcm.o $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -58,10 +58,10 @@ parte1: $(BUILD)/parte1
 testar: $(BUILD)/testar_metodos
 	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/testar_metodos
 
-# Parte 3: bandas antes e depois do RCM. Uso: make parte3 MATRIZ=matrices/bcsstk14.mtx
+# Parte 3: bandas antes e depois do RCM e tempos densa x banda. Uso: make parte3 MATRIZ=matrices/bcsstk14.mtx
 MATRIZ = matrices/teste_10x10.mtx
 parte3: $(BUILD)/parte3
-	./$(BUILD)/parte3 $(MATRIZ)
+	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/parte3 $(MATRIZ)
 
 # Parte 3: padrões de esparsidade lado a lado em figures/ (rode antes make parte3)
 spy_rcm:
