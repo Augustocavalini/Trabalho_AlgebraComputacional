@@ -33,11 +33,11 @@ ESTILOS = {
 }
 
 NOME_DA_ROTINA = {
-    ("LU densa", "nossa"): "LU nossa",
+    ("LU densa", "implementado"): "LU implementado",
     ("LU densa", "LAPACK"): "dgetrf/dgetrs",
-    ("Cholesky densa", "nossa"): "Cholesky nossa",
+    ("Cholesky densa", "implementado"): "Cholesky implementado",
     ("Cholesky densa", "LAPACK"): "dpotrf/dpotrs",
-    ("Thomas", "nossa"): "Thomas nosso",
+    ("Thomas", "implementado"): "Thomas implementado",
     ("Thomas", "LAPACK"): "dgtsv",
 }
 
@@ -91,7 +91,7 @@ def desenhar_painel(eixos, titulo, curvas, expoente):
     desenhar_referencia(eixos, referencia[2], referencia[3], expoente)
 
     for metodo, implementacao, m, tempo in curvas:
-        cor = COR_NOSSA if implementacao == "nossa" else COR_LAPACK
+        cor = COR_NOSSA if implementacao == "implementado" else COR_LAPACK
         estilo = ESTILOS[metodo]
         eixos.plot(m, tempo, color=cor, linewidth=2, markersize=6,
                    markeredgecolor="white", markeredgewidth=1,
@@ -124,7 +124,7 @@ def main():
 
     figura, (densa, solucao, tridiagonal) = plt.subplots(1, 3, figsize=(12, 4.2))
 
-    metodos_densos = [("LU densa", "nossa"), ("LU densa", "LAPACK"), ("Cholesky densa", "nossa"), ("Cholesky densa", "LAPACK")]
+    metodos_densos = [("LU densa", "implementado"), ("LU densa", "LAPACK"), ("Cholesky densa", "implementado"), ("Cholesky densa", "LAPACK")]
 
     curvas = [(met, imp, series[(met, imp)]["m"], series[(met, imp)]["fatoracao"]) for met, imp in metodos_densos]
     desenhar_painel(densa, "Fatoração densa", curvas, 3)
@@ -134,7 +134,7 @@ def main():
 
     # O dgtsv só informa o tempo total, então o painel usa fatoração mais solução nos dois.
     curvas = []
-    for implementacao in ("nossa", "LAPACK"):
+    for implementacao in ("implementado", "LAPACK"):
         serie = series[("Thomas", implementacao)]
         curvas.append(("Thomas", implementacao, serie["m"], serie["fatoracao"] + serie["solucao"]))
     desenhar_painel(tridiagonal, "tridiag(-1, 2, -1): fatoração + solução", curvas, 1)
@@ -155,7 +155,7 @@ def main():
         nome = NOME_DA_ROTINA[(metodo, implementacao)]
         linhas.append((nome, "fatoração", 3, inclinacao(serie["m"], serie["fatoracao"]), inclinacao_final(serie["m"], serie["fatoracao"])))
         linhas.append((nome, "solução", 2, inclinacao(serie["m"], serie["solucao"]), inclinacao_final(serie["m"], serie["solucao"])))
-    for implementacao in ("nossa", "LAPACK"):
+    for implementacao in ("implementado", "LAPACK"):
         serie = series[("Thomas", implementacao)]
         total = serie["fatoracao"] + serie["solucao"]
         linhas.append((NOME_DA_ROTINA[("Thomas", implementacao)], "fatoração + solução", 1, inclinacao(serie["m"], total), inclinacao_final(serie["m"], total)))

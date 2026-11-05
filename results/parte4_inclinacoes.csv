@@ -1,11 +1,11 @@
 rotina,etapa,prevista,ajustada,dois_ultimos_pontos
-LU nossa,fatoração,3,3.1929,3.6527
-LU nossa,solução,2,2.1959,1.9462
+LU implementado,fatoração,3,3.1929,3.6527
+LU implementado,solução,2,2.1959,1.9462
 dgetrf/dgetrs,fatoração,3,2.8272,2.9570
 dgetrf/dgetrs,solução,2,2.3388,2.1350
-Cholesky nossa,fatoração,3,3.1558,3.7469
-Cholesky nossa,solução,2,2.0922,1.9797
+Cholesky implementado,fatoração,3,3.1558,3.7469
+Cholesky implementado,solução,2,2.0922,1.9797
 dpotrf/dpotrs,fatoração,3,2.8508,3.0438
 dpotrf/dpotrs,solução,2,2.1797,2.3133
-Thomas nosso,fatoração + solução,1,1.0122,1.0212
+Thomas implementado,fatoração + solução,1,1.0122,1.0212
 dgtsv,fatoração + solução,1,1.0019,1.0277

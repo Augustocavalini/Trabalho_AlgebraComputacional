@@ -9,7 +9,7 @@ BUILD  = build
 COMMON = $(BUILD)/mmio.o $(BUILD)/matrix.o
 
 # Alvos que são comandos, e não nomes de arquivos
-.PHONY: all check parte1 testar parte3 parte4 parte4_escala graficos_escala spy spy_rcm clean
+.PHONY: all check parte1 testar parte3 parte4 parte4_escala graficos_escala relatorio spy spy_rcm clean
 
 all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/testar_metodos $(BUILD)/parte3 $(BUILD)/parte4
 
@@ -61,7 +61,7 @@ parte1: $(BUILD)/parte1
 testar: $(BUILD)/testar_metodos
 	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/testar_metodos
 
-# Parte 3: bandas antes e depois do RCM e tempos densa x banda. Uso: make parte3 MATRIZ=matrices/bcsstk14.mtx
+# Parte 3: bandas antes e depois do RCM e tempos densa x banda. Uso: make parte3 MATRIZ=matrices/steam2.mtx
 MATRIZ = matrices/teste_10x10.mtx
 parte3: $(BUILD)/parte3
 	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/parte3 $(MATRIZ)
@@ -81,6 +81,10 @@ parte4_escala: $(BUILD)/parte4
 
 graficos_escala:
 	conda run -n tp-alc python scripts/graficos_escala.py
+
+# Relatório em PDF, gerado a partir de results/ e figures/
+relatorio:
+	conda run -n tp-alc python scripts/gerar_relatorio.py
 
 # Parte 1: spy plots em figures/
 spy:

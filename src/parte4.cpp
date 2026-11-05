@@ -57,7 +57,7 @@ typedef Execucao (*FuncaoExecucao)(const Problema&);
 struct Registro {
     std::string matriz;
     std::string metodo;
-    std::string implementacao;  // nossa ou LAPACK
+    std::string implementacao;  // implementado ou LAPACK
     std::string falha;          // motivo, se o método não funcionou nesta matriz
     int m = 0;
     int bI = 0;
@@ -66,7 +66,7 @@ struct Registro {
     double tempo_solucao = 0;
     double flops = 0;
     double gflops = 0;
-    double nossa_sobre_lapack = 0;  // só nas linhas da nossa implementação
+    double nossa_sobre_lapack = 0;  // só nas linhas da implementação própria
     double retroacao = 0;
     double direto = 0;
     double limite_kappa_u = 0;
@@ -427,7 +427,7 @@ static void medir_metodo(const Problema& p, const std::string& metodo, double fl
                          FuncaoExecucao nossa, FuncaoExecucao lapack, std::vector<Registro>& tabela) {
     Registro r_nossa;
     Registro r_lapack;
-    r_nossa.implementacao = "nossa";
+    r_nossa.implementacao = "implementado";
     r_lapack.implementacao = "LAPACK";
 
     Registro* registros[2] = {&r_nossa, &r_lapack};
@@ -493,7 +493,7 @@ static void medir_metodo(const Problema& p, const std::string& metodo, double fl
 }
 
 static void imprimir_cabecalho() {
-    std::printf("\n| Matriz | Método | Impl. | m | b_I | b_S | Fatoração (s) | Solução (s) | GFLOP/s | Nossa/LAPACK | Retroação | Direto | κ∞(A)u | Direto ≤ κu | ρ |\n");
+    std::printf("\n| Matriz | Método | Impl. | m | b_I | b_S | Fatoração (s) | Solução (s) | GFLOP/s | Implementado/LAPACK | Retroação | Direto | κ∞(A)u | Direto ≤ κu | ρ |\n");
     std::printf("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|\n");
 }
 
@@ -558,7 +558,7 @@ static bool gravar_csv(const std::string& caminho, const std::vector<Registro>& 
         return false;
     }
 
-    std::fprintf(csv, "matriz,metodo,implementacao,m,bI,bS,fatoracao_s,solucao_s,flops,gflops,nossa_sobre_lapack,retroacao,direto,limite_kappa_u,rho,falha\n");
+    std::fprintf(csv, "matriz,metodo,implementacao,m,bI,bS,fatoracao_s,solucao_s,flops,gflops,implementado_sobre_lapack,retroacao,direto,limite_kappa_u,rho,falha\n");
     for (const Registro& r : tabela) {
         // O nome da matriz fica entre aspas porque pode ter vírgulas, como em tridiag(-1,2,-1).
         std::fprintf(csv, "\"%s\",%s,%s,%d,%d,%d,%.6e,%.6e,%.6e,%.4f,%.4f,%.6e,%.6e,%.6e,%.4f,%s\n",
@@ -723,7 +723,7 @@ static void medir_tridiagonal(int m, std::vector<Registro>& tabela) {
     }
 
     const Vetor* solucoes[2] = {&x_nossa, &x_lapack};
-    const char* implementacoes[2] = {"nossa", "LAPACK"};
+    const char* implementacoes[2] = {"implementado", "LAPACK"};
     double tempos_fatoracao[2] = {mediana(fatoracoes_nossa), mediana(totais_lapack)};
     double tempos_solucao[2] = {mediana(solucoes_nossa), 0.0};
 

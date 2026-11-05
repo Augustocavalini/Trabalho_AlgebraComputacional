@@ -7,8 +7,8 @@
 // - confere que o sistema reordenado (PAP^T)(Px) = Pb é equivalente ao original;
 // - imprime as bandas e o armazenamento em banda antes e depois;
 // - grava a permutação em results/rcm_<matriz>.txt, usada por scripts/spy_rcm.py;
-// - resolve o sistema reordenado nas formas densa e em banda e compara os tempos
-//   entre si e com a previsão dada pelas contagens de operações.
+// - resolve o sistema com LU (e com Cholesky, se a matriz for SPD) nas formas densa e em banda,
+//   sem e com RCM, e compara os tempos entre si e com a previsão das contagens de operações.
 //
 // As tabelas também são gravadas em results/parte3.csv e results/parte3_tempos.csv.
 #include <algorithm>
@@ -198,11 +198,13 @@ static bool gravar_csv(const std::vector<LinhaTabela>& tabela) {
     return true;
 }
 
-// O resultado da comparação entre as formas densa e em banda para uma matriz.
+// Uma linha da comparação entre as formas densa e em banda: um método (LU ou Cholesky)
+// aplicado a uma matriz em uma ordem (original ou RCM). As duas formas são implementações próprias.
 struct ComparacaoTempos {
     std::string nome;
-    std::string metodo;       // Cholesky ou LU
-    std::string falha;        // motivo, se a fatoração em banda não foi possível
+    std::string metodo;       // LU ou Cholesky
+    std::string ordem;        // original (A) ou RCM (PAP^T)
+    std::string falha_banda;  // motivo, se a fatoração em banda não foi possível
     int m = 0;
     int bI = 0;
     int bS = 0;
@@ -211,8 +213,10 @@ struct ComparacaoTempos {
     double fatoracao_banda = 0;
     double solucao_densa = 0;
     double solucao_banda = 0;
-    double flops_densa = 0;
-    double flops_banda = 0;
+    double flops_densa_formula = 0;  // contagens do enunciado
+    double flops_banda_formula = 0;
+    double flops_densa_exata = 0;    // operações que os nossos laços realmente fazem
+    double flops_banda_exata = 0;
     double retroacao_densa = 0;
     double retroacao_banda = 0;
     double direto_densa = 0;
@@ -274,52 +278,34 @@ static bool eh_spd(const DenseMatrix& A) {
     return true;
 }
 
-// Resolve (PAP^T)(Px) = Pb com o Cholesky denso e em banda, medindo os tempos.
-static void comparar_cholesky(const DenseMatrix& A_reordenada, const std::vector<double>& Pb, ComparacaoTempos& c, std::vector<double>& Px_densa, std::vector<double>& Px_banda) {
-    BandMatrix banda_original = montar_banda(A_reordenada, c.bI, 0);
-
-    std::vector<double> tempos_fatoracao_densa;
-    std::vector<double> tempos_solucao_densa;
-    std::vector<double> tempos_fatoracao_banda;
-    std::vector<double> tempos_solucao_banda;
-
-    // As formas se alternam a cada repetição, para que variações da máquina
-    // ao longo do tempo afetem as duas da mesma forma. As cópias ficam fora do cronômetro.
-    for (int repeticao = 0; repeticao < REPETICOES; repeticao++) {
-        DenseMatrix L_densa = A_reordenada;
-        double inicio = agora();
-        fatoracaoCholesky(L_densa);
-        double meio = agora();
-        Px_densa = resolver_sistema_cholesky(L_densa, Pb);
-        double fim = agora();
-        tempos_fatoracao_densa.push_back(meio - inicio);
-        tempos_solucao_densa.push_back(fim - meio);
-
-        BandMatrix L_banda = banda_original;
-        inicio = agora();
-        fatoracaoCholeskyBanda(L_banda);
-        meio = agora();
-        Px_banda = resolver_sistema_cholesky_banda(L_banda, Pb);
-        fim = agora();
-        tempos_fatoracao_banda.push_back(meio - inicio);
-        tempos_solucao_banda.push_back(fim - meio);
+// Operações que a nossa LU faz com larguras bI e bS (a densa usa bI = bS = m - 1).
+// Na etapa k, há r multiplicadores (uma divisão cada) e r * c atualizações
+// (uma multiplicação e uma subtração cada). A busca do pivô não é contada.
+static double contar_operacoes_lu(int m, int bI, int bS) {
+    double total = 0.0;
+    for (int k = 0; k < m; k++) {
+        double r = std::min(bI, m - 1 - k);
+        double c = std::min(bS, m - 1 - k);
+        total += r + 2.0 * r * c;
     }
-
-    c.fatoracao_densa = mediana(tempos_fatoracao_densa);
-    c.solucao_densa = mediana(tempos_solucao_densa);
-    c.fatoracao_banda = mediana(tempos_fatoracao_banda);
-    c.solucao_banda = mediana(tempos_solucao_banda);
-
-    // Contagens de operações do enunciado: (1/3) m^3 e m b^2.
-    double m = c.m;
-    double b = c.bI;
-    c.flops_densa = (1.0 / 3.0) * m * m * m;
-    c.flops_banda = m * b * b;
+    return total;
 }
 
-// Resolve (PAP^T)(Px) = Pb com a LU densa, com pivoteamento, e em banda, sem pivoteamento.
-static void comparar_lu(const DenseMatrix& A_reordenada, const std::vector<double>& Pb, ComparacaoTempos& c, std::vector<double>& Px_densa, std::vector<double>& Px_banda) {
-    BandMatrix banda_original = montar_banda(A_reordenada, c.bI, c.bS);
+// Operações que o nosso Cholesky faz com largura b (o denso usa b = m - 1).
+// Na etapa k, há uma raiz, r divisões e r(r + 1)/2 atualizações de duas operações cada.
+static double contar_operacoes_cholesky(int m, int b) {
+    double total = 0.0;
+    for (int k = 0; k < m; k++) {
+        double r = std::min(b, m - 1 - k);
+        total += 1.0 + r + r * (r + 1.0);
+    }
+    return total;
+}
+
+// Mede a LU densa (com pivoteamento) e a LU em banda (sem pivoteamento) no sistema A_sistema x = b_sistema.
+static void medir_lu(const DenseMatrix& A_sistema, const std::vector<double>& b_sistema, ComparacaoTempos& c,
+                     std::vector<double>& x_densa, std::vector<double>& x_banda) {
+    BandMatrix banda_original = montar_banda(A_sistema, c.bI, c.bS);
     std::vector<lapack_int> pivos(c.m);
 
     std::vector<double> tempos_fatoracao_densa;
@@ -330,20 +316,73 @@ static void comparar_lu(const DenseMatrix& A_reordenada, const std::vector<doubl
     // As formas se alternam a cada repetição, para que variações da máquina
     // ao longo do tempo afetem as duas da mesma forma. As cópias ficam fora do cronômetro.
     for (int repeticao = 0; repeticao < REPETICOES; repeticao++) {
-        DenseMatrix LU_densa = A_reordenada;
+        DenseMatrix LU_densa = A_sistema;
         double inicio = agora();
         fatoracaoLu(LU_densa, pivos);
         double meio = agora();
-        Px_densa = resolver_sistema_lu(LU_densa, pivos, Pb);
+        x_densa = resolver_sistema_lu(LU_densa, pivos, b_sistema);
         double fim = agora();
         tempos_fatoracao_densa.push_back(meio - inicio);
         tempos_solucao_densa.push_back(fim - meio);
 
-        BandMatrix LU_banda = banda_original;
+        // A LU em banda não pivota e pode encontrar um pivô nulo que a densa evitaria.
+        if (c.falha_banda.empty()) {
+            try {
+                BandMatrix LU_banda = banda_original;
+                inicio = agora();
+                fatoracaoLuBanda(LU_banda);
+                meio = agora();
+                x_banda = resolver_sistema_lu_banda(LU_banda, b_sistema);
+                fim = agora();
+                tempos_fatoracao_banda.push_back(meio - inicio);
+                tempos_solucao_banda.push_back(fim - meio);
+            } catch (const std::exception& erro) {
+                c.falha_banda = erro.what();
+            }
+        }
+    }
+
+    c.fatoracao_densa = mediana(tempos_fatoracao_densa);
+    c.solucao_densa = mediana(tempos_solucao_densa);
+    if (c.falha_banda.empty()) {
+        c.fatoracao_banda = mediana(tempos_fatoracao_banda);
+        c.solucao_banda = mediana(tempos_solucao_banda);
+    }
+
+    double m = c.m;
+    double bI = c.bI;
+    double bS = c.bS;
+    c.flops_densa_formula = (2.0 / 3.0) * m * m * m;
+    c.flops_banda_formula = 2.0 * m * bI * bS;
+    c.flops_densa_exata = contar_operacoes_lu(c.m, c.m - 1, c.m - 1);
+    c.flops_banda_exata = contar_operacoes_lu(c.m, c.bI, c.bS);
+}
+
+// Mede o Cholesky denso e em banda no sistema A_sistema x = b_sistema.
+static void medir_cholesky(const DenseMatrix& A_sistema, const std::vector<double>& b_sistema, ComparacaoTempos& c,
+                           std::vector<double>& x_densa, std::vector<double>& x_banda) {
+    BandMatrix banda_original = montar_banda(A_sistema, c.bI, 0);
+
+    std::vector<double> tempos_fatoracao_densa;
+    std::vector<double> tempos_solucao_densa;
+    std::vector<double> tempos_fatoracao_banda;
+    std::vector<double> tempos_solucao_banda;
+
+    for (int repeticao = 0; repeticao < REPETICOES; repeticao++) {
+        DenseMatrix L_densa = A_sistema;
+        double inicio = agora();
+        fatoracaoCholesky(L_densa);
+        double meio = agora();
+        x_densa = resolver_sistema_cholesky(L_densa, b_sistema);
+        double fim = agora();
+        tempos_fatoracao_densa.push_back(meio - inicio);
+        tempos_solucao_densa.push_back(fim - meio);
+
+        BandMatrix L_banda = banda_original;
         inicio = agora();
-        fatoracaoLuBanda(LU_banda);
+        fatoracaoCholeskyBanda(L_banda);
         meio = agora();
-        Px_banda = resolver_sistema_lu_banda(LU_banda, Pb);
+        x_banda = resolver_sistema_cholesky_banda(L_banda, b_sistema);
         fim = agora();
         tempos_fatoracao_banda.push_back(meio - inicio);
         tempos_solucao_banda.push_back(fim - meio);
@@ -354,50 +393,49 @@ static void comparar_lu(const DenseMatrix& A_reordenada, const std::vector<doubl
     c.fatoracao_banda = mediana(tempos_fatoracao_banda);
     c.solucao_banda = mediana(tempos_solucao_banda);
 
-    // Contagens de operações do enunciado: (2/3) m^3 e 2 m bI bS.
     double m = c.m;
-    double bI = c.bI;
-    double bS = c.bS;
-    c.flops_densa = (2.0 / 3.0) * m * m * m;
-    c.flops_banda = 2.0 * m * bI * bS;
+    double b = c.bI;
+    c.flops_densa_formula = (1.0 / 3.0) * m * m * m;
+    c.flops_banda_formula = m * b * b;
+    c.flops_densa_exata = contar_operacoes_cholesky(c.m, c.m - 1);
+    c.flops_banda_exata = contar_operacoes_cholesky(c.m, c.bI);
 }
 
-// Resolve o sistema reordenado nas duas formas. Os erros são medidos no sistema original,
-// depois de recuperar x a partir de Px.
-static ComparacaoTempos comparar_tempos(const std::string& nome, const DenseMatrix& A, const DenseMatrix& A_reordenada, const std::vector<int>& perm, double tempo_rcm) {
+// Mede um método em uma ordem. Na ordem RCM, o sistema resolvido é (PAP^T)(Px) = Pb, e x é
+// recuperado com P^T antes de medir os erros, que são sempre calculados no sistema original Ax = b.
+static ComparacaoTempos comparar(const std::string& nome, const std::string& metodo, const std::string& ordem,
+                                 const DenseMatrix& A, const std::vector<double>& b,
+                                 const DenseMatrix& A_sistema, const std::vector<double>& b_sistema,
+                                 const std::vector<int>& perm, double tempo_rcm) {
     ComparacaoTempos c;
     c.nome = nome;
+    c.metodo = metodo;
+    c.ordem = ordem;
     c.m = A.m;
     c.tempo_rcm = tempo_rcm;
-    calcular_bandas(A_reordenada, c.bI, c.bS);
+    calcular_bandas(A_sistema, c.bI, c.bS);
 
-    // b = A*x, com a solução exata x = (1, ..., 1).
-    std::vector<double> x_exato(A.m, 1.0);
-    std::vector<double> b = multiplicar(A, x_exato);
-    std::vector<double> Pb = permutar_vetor(b, perm);
+    std::fprintf(stderr, "medindo %s, %s, ordem %s\n", nome.c_str(), metodo.c_str(), ordem.c_str());
 
-    std::vector<double> Px_densa;
-    std::vector<double> Px_banda;
-
-    try {
-        if (eh_spd(A_reordenada)) {
-            c.metodo = "Cholesky";
-            comparar_cholesky(A_reordenada, Pb, c, Px_densa, Px_banda);
-        } else {
-            c.metodo = "LU";
-            comparar_lu(A_reordenada, Pb, c, Px_densa, Px_banda);
-        }
-    } catch (const std::exception& erro) {
-        // A LU em banda não pivota e pode encontrar um pivô nulo que a LU densa evitaria.
-        c.falha = erro.what();
-        return c;
+    std::vector<double> x_densa;
+    std::vector<double> x_banda;
+    if (metodo == "LU") {
+        medir_lu(A_sistema, b_sistema, c, x_densa, x_banda);
+    } else {
+        medir_cholesky(A_sistema, b_sistema, c, x_densa, x_banda);
     }
 
-    std::vector<double> x_densa = despermutar_vetor(Px_densa, perm);
-    std::vector<double> x_banda = despermutar_vetor(Px_banda, perm);
-    calcular_erros(A, b, x_densa, c.retroacao_densa, c.direto_densa);
-    calcular_erros(A, b, x_banda, c.retroacao_banda, c.direto_banda);
+    if (ordem == "RCM") {
+        x_densa = despermutar_vetor(x_densa, perm);
+        if (c.falha_banda.empty()) {
+            x_banda = despermutar_vetor(x_banda, perm);
+        }
+    }
 
+    calcular_erros(A, b, x_densa, c.retroacao_densa, c.direto_densa);
+    if (c.falha_banda.empty()) {
+        calcular_erros(A, b, x_banda, c.retroacao_banda, c.direto_banda);
+    }
     return c;
 }
 
@@ -410,37 +448,58 @@ static double razao(double numerador, double denominador) {
 }
 
 static void imprimir_tempos(const std::vector<ComparacaoTempos>& comparacoes) {
-    std::printf("\n| Matriz | Método | m | b_I | b_S | Fatoração densa (s) | Fatoração banda (s) | Ganho medido | Ganho previsto "
-                "| GFLOP/s densa | GFLOP/s banda | Solução densa (s) | Solução banda (s) "
-                "| Retroação densa | Retroação banda | Direto densa | Direto banda | RCM (s) |\n");
-    std::printf("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n");
-
+    std::printf("\nTempos (s), mediana de %d execuções\n", REPETICOES);
+    std::printf("| Matriz | Método | Ordem | b_I | b_S | Fatoração densa | Fatoração em banda | Solução densa | Solução em banda |\n");
+    std::printf("|---|---|---|---:|---:|---:|---:|---:|---:|\n");
     for (const ComparacaoTempos& c : comparacoes) {
-        if (!c.falha.empty()) {
-            std::printf("| %s | %s | %d | %d | %d | falhou: %s |\n",
-                        c.nome.c_str(), c.metodo.c_str(), c.m, c.bI, c.bS, c.falha.c_str());
+        if (!c.falha_banda.empty()) {
+            std::printf("| %s | %s | %s | %d | %d | %.3e | falhou: %s | %.3e | - |\n",
+                        c.nome.c_str(), c.metodo.c_str(), c.ordem.c_str(), c.bI, c.bS,
+                        c.fatoracao_densa, c.falha_banda.c_str(), c.solucao_densa);
             continue;
         }
+        std::printf("| %s | %s | %s | %d | %d | %.3e | %.3e | %.3e | %.3e |\n",
+                    c.nome.c_str(), c.metodo.c_str(), c.ordem.c_str(), c.bI, c.bS,
+                    c.fatoracao_densa, c.fatoracao_banda, c.solucao_densa, c.solucao_banda);
+    }
 
-        std::printf("| %s | %s | %d | %d | %d | %.3e | %.3e | %.1f | %.1f | %.2f | %.2f | %.2e | %.2e | %.1e | %.1e | %.1e | %.1e | %.2e |\n",
-                    c.nome.c_str(),
-                    c.metodo.c_str(),
-                    c.m,
-                    c.bI,
-                    c.bS,
-                    c.fatoracao_densa,
-                    c.fatoracao_banda,
+    std::printf("\nGanho da fatoração em banda sobre a densa\n");
+    std::printf("| Matriz | Método | Ordem | Medido | Previsto (fórmula do enunciado) | Previsto (contagem exata) |\n");
+    std::printf("|---|---|---|---:|---:|---:|\n");
+    for (const ComparacaoTempos& c : comparacoes) {
+        if (!c.falha_banda.empty()) {
+            continue;
+        }
+        std::printf("| %s | %s | %s | %.2f | %.2f | %.2f |\n",
+                    c.nome.c_str(), c.metodo.c_str(), c.ordem.c_str(),
                     razao(c.fatoracao_densa, c.fatoracao_banda),
-                    razao(c.flops_densa, c.flops_banda),
-                    razao(c.flops_densa, c.fatoracao_densa) / 1e9,
-                    razao(c.flops_banda, c.fatoracao_banda) / 1e9,
-                    c.solucao_densa,
-                    c.solucao_banda,
-                    c.retroacao_densa,
-                    c.retroacao_banda,
-                    c.direto_densa,
-                    c.direto_banda,
-                    c.tempo_rcm);
+                    razao(c.flops_densa_formula, c.flops_banda_formula),
+                    razao(c.flops_densa_exata, c.flops_banda_exata));
+    }
+
+    std::printf("\nTaxa da fatoração em GFLOP/s, com a contagem exata\n");
+    std::printf("| Matriz | Método | Ordem | Densa | Em banda |\n");
+    std::printf("|---|---|---|---:|---:|\n");
+    for (const ComparacaoTempos& c : comparacoes) {
+        if (!c.falha_banda.empty()) {
+            continue;
+        }
+        std::printf("| %s | %s | %s | %.2f | %.2f |\n",
+                    c.nome.c_str(), c.metodo.c_str(), c.ordem.c_str(),
+                    c.flops_densa_exata / c.fatoracao_densa / 1e9,
+                    c.flops_banda_exata / c.fatoracao_banda / 1e9);
+    }
+
+    std::printf("\nErros no sistema original Ax = b\n");
+    std::printf("| Matriz | Método | Ordem | Retroação densa | Retroação em banda | Direto densa | Direto em banda |\n");
+    std::printf("|---|---|---|---:|---:|---:|---:|\n");
+    for (const ComparacaoTempos& c : comparacoes) {
+        if (!c.falha_banda.empty()) {
+            continue;
+        }
+        std::printf("| %s | %s | %s | %.1e | %.1e | %.1e | %.1e |\n",
+                    c.nome.c_str(), c.metodo.c_str(), c.ordem.c_str(),
+                    c.retroacao_densa, c.retroacao_banda, c.direto_densa, c.direto_banda);
     }
 }
 
@@ -450,12 +509,14 @@ static bool gravar_csv_tempos(const std::vector<ComparacaoTempos>& comparacoes) 
         return false;
     }
 
-    std::fprintf(csv, "matriz,metodo,m,bI,bS,fatoracao_densa_s,fatoracao_banda_s,solucao_densa_s,solucao_banda_s,"
-                      "flops_densa,flops_banda,retroacao_densa,retroacao_banda,direto_densa,direto_banda,tempo_rcm_s,falha\n");
+    std::fprintf(csv, "matriz,metodo,ordem,m,bI,bS,fatoracao_densa_s,fatoracao_banda_s,solucao_densa_s,solucao_banda_s,"
+                      "flops_densa_formula,flops_banda_formula,flops_densa_exata,flops_banda_exata,"
+                      "retroacao_densa,retroacao_banda,direto_densa,direto_banda,tempo_rcm_s,falha_banda\n");
     for (const ComparacaoTempos& c : comparacoes) {
-        std::fprintf(csv, "%s,%s,%d,%d,%d,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s\n",
+        std::fprintf(csv, "%s,%s,%s,%d,%d,%d,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s\n",
                      c.nome.c_str(),
                      c.metodo.c_str(),
+                     c.ordem.c_str(),
                      c.m,
                      c.bI,
                      c.bS,
@@ -463,14 +524,16 @@ static bool gravar_csv_tempos(const std::vector<ComparacaoTempos>& comparacoes) 
                      c.fatoracao_banda,
                      c.solucao_densa,
                      c.solucao_banda,
-                     c.flops_densa,
-                     c.flops_banda,
+                     c.flops_densa_formula,
+                     c.flops_banda_formula,
+                     c.flops_densa_exata,
+                     c.flops_banda_exata,
                      c.retroacao_densa,
                      c.retroacao_banda,
                      c.direto_densa,
                      c.direto_banda,
                      c.tempo_rcm,
-                     c.falha.c_str());
+                     c.falha_banda.c_str());
     }
     std::fclose(csv);
     return true;
@@ -523,8 +586,23 @@ int main(int argc, char** argv) {
                 throw std::runtime_error(arquivo.name + ": não foi possível gravar a permutação");
             }
 
-            ComparacaoTempos comparacao = comparar_tempos(arquivo.name, A, permutada, perm, mediana(tempos_rcm));
-            comparacoes.push_back(comparacao);
+            // b = A*x, com a solução exata x = (1, ..., 1). O sistema reordenado usa Pb.
+            std::vector<double> x_exato(A.m, 1.0);
+            std::vector<double> b = multiplicar(A, x_exato);
+            std::vector<double> Pb = permutar_vetor(b, perm);
+            double tempo_rcm = mediana(tempos_rcm);
+
+            // A LU vale para qualquer matriz; o Cholesky, só para as SPD.
+            // Ser SPD não depende da ordem, porque PAP^T é congruente a A.
+            std::vector<std::string> metodos = {"LU"};
+            if (eh_spd(A)) {
+                metodos.push_back("Cholesky");
+            }
+
+            for (const std::string& metodo : metodos) {
+                comparacoes.push_back(comparar(arquivo.name, metodo, "original", A, b, A, b, perm, tempo_rcm));
+                comparacoes.push_back(comparar(arquivo.name, metodo, "RCM", A, b, permutada, Pb, perm, tempo_rcm));
+            }
         }
     } catch (const std::exception& erro) {
         std::fprintf(stderr, "erro: %s\n", erro.what());

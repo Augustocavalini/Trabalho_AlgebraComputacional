@@ -1,0 +1,23 @@
+Matriz teste_10x10: m = 10, solução exata x = (1, ..., 1)
+
+LU densa             OK        retroação = 4.9e-17   erro direto = 1.1e-16   diferença para a LAPACK = 2.2e-16
+  nosso:   1 1 1 1 1 1 1 1 1 1
+  LAPACK:  1 1 1 1 1 1 1 1 1 1
+
+Cholesky densa       OK        retroação = 2.0e-16   erro direto = 2.2e-16   diferença para a LAPACK = 4.4e-16
+  nosso:   1 1 1 1 1 1 1 1 1 1
+  LAPACK:  1 1 1 1 1 1 1 1 1 1
+
+LU em banda          OK        retroação = 4.9e-17   erro direto = 1.1e-16   diferença para a LAPACK = 2.2e-16
+  nosso:   1 1 1 1 1 1 1 1 1 1
+  LAPACK:  1 1 1 1 1 1 1 1 1 1
+
+Cholesky em banda    OK        retroação = 2.0e-16   erro direto = 2.2e-16   diferença para a LAPACK = 2.2e-16
+  nosso:   1 1 1 1 1 1 1 1 1 1
+  LAPACK:  1 1 1 1 1 1 1 1 1 1
+
+Thomas               OK        retroação = 4.9e-17   erro direto = 1.1e-16   diferença para a LAPACK = 2.2e-16
+  nosso:   1 1 1 1 1 1 1 1 1 1
+  LAPACK:  1 1 1 1 1 1 1 1 1 1
+
+Todos os métodos aplicáveis passaram.

@@ -21,6 +21,7 @@ sudo apt install build-essential liblapacke-dev libopenblas-dev libboost-graph-d
 ```bash
 conda create -n tp-alc python=3.12 numpy scipy matplotlib threadpoolctl
 conda activate tp-alc
+pip install reportlab    # só para gerar o relatório em PDF
 ```
 
 ### Verificação
@@ -39,19 +40,35 @@ export OPENBLAS_NUM_THREADS=1
 
 ## Matrizes
 
-As matrizes não estão no repositório. Baixe-as do repositório Matrix Market do NIST para `matrices/`:
+As matrizes não estão no repositório. As três usadas no relatório vêm do repositório Matrix Market do NIST:
+
+- `bcsstk15`: https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/bcsstruc2/bcsstk15.html
+- `steam2`: https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/steam/steam2.html
+- `1138_bus`: https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/psadmit/1138_bus.html
+
+Baixe o `.mtx.gz` pela página de cada matriz e descompacte-o em `matrices/`, por exemplo:
 
 ```bash
-scripts/download_matrices.sh Harwell-Boeing/bcsstruc2/bcsstk14 Harwell-Boeing/oilgen/orsirr_1 Harwell-Boeing/psadmit/1138_bus
+gunzip -c ~/Downloads/steam2.mtx.gz > matrices/steam2.mtx
 ```
 
-Páginas das matrizes:
-
-- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/bcsstruc2/bcsstk14.html
-- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/oilgen/orsirr_1.html
-- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/psadmit/1138_bus.html
-
 As mesmas matrizes estão na SuiteSparse Matrix Collection (https://sparse.tamu.edu), no grupo `HB`.
+
+## Reproduzir o relatório
+
+Com `matrices/` contendo apenas as três matrizes acima (nos comandos sem argumentos, os programas usam todas as `matrices/*.mtx`):
+
+| Item do relatório | Comando | Saída |
+|---|---|---|
+| Tabela 1 | `OPENBLAS_NUM_THREADS=1 ./build/testar_metodos teste_10x10.mtx > results/parte2_validacao.txt` (a matriz é a da seção Parte 2) | `results/parte2_validacao.txt` |
+| Tabela 2 | `make parte1` | `results/parte1.csv` |
+| Figura 1 | `make spy` | `figures/spy_<matriz>.png` |
+| Tabelas 3 a 6 | `make parte3 MATRIZ="matrices/steam2.mtx matrices/1138_bus.mtx matrices/bcsstk15.mtx"` | `results/parte3.csv`, `results/parte3_tempos.csv` |
+| Figura 2 | `make spy_rcm MATRIZ="matrices/steam2.mtx matrices/1138_bus.mtx matrices/bcsstk15.mtx"` | `figures/rcm_<matriz>.png` |
+| Tabela 7 | `make parte4` | `results/parte4_matrizes.csv` |
+| Tabelas 8 e 9 | `make parte4_escala` (alguns minutos) | `results/parte4_escala.csv` |
+| Figura 3 e Tabela 10 | `make graficos_escala` | `figures/parte4_escala.png`, `results/parte4_inclinacoes.csv` |
+| Relatório em PDF | `make relatorio` | `relatorio/relatorio.pdf` |
 
 ## Parte 1 – Leitura e caracterização
 
@@ -61,7 +78,7 @@ conda run -n tp-alc python scripts/spy.py   # spy plots em figures/spy_<matriz>.
 ```
 
 Sem argumentos, os dois usam todas as `matrices/*.mtx`; também aceitam arquivos específicos
-(`./build/parte1 matrices/bcsstk14.mtx`).
+(`./build/parte1 matrices/bcsstk15.mtx`).
 
 - `src/matrix.{hpp,cpp}`: leitura do `.mtx` com o mmio e montagem da forma densa em coluna-maior.
   Matrizes `symmetric` (e `skew-symmetric`) têm os coeficientes fora da diagonal espelhados;
@@ -77,7 +94,7 @@ Sem argumentos, os dois usam todas as `matrices/*.mtx`; também aceitam arquivos
 
 ```bash
 make testar                                        # usa matrices/teste_10x10.mtx
-./build/testar_metodos matrices/bcsstk14.mtx       # usa outra matriz
+./build/testar_metodos matrices/bcsstk15.mtx       # usa outra matriz
 ```
 
 `src/parte2.cpp` resolve o sistema com solução exata `x = (1, ..., 1)` por LU densa, Cholesky denso,
@@ -115,8 +132,8 @@ Ela não fica no repositório, como as demais matrizes (ver `.gitignore`). Para 
 ## Parte 3 – Reordenamento RCM
 
 ```bash
-make parte3 MATRIZ=matrices/bcsstk14.mtx    # bandas e armazenamento: results/parte3.csv; tempos: results/parte3_tempos.csv
-make spy_rcm MATRIZ=matrices/bcsstk14.mtx   # padrões lado a lado: figures/rcm_bcsstk14.png
+make parte3 MATRIZ=matrices/bcsstk15.mtx    # bandas e armazenamento: results/parte3.csv; tempos: results/parte3_tempos.csv
+make spy_rcm MATRIZ=matrices/bcsstk15.mtx   # padrões lado a lado: figures/rcm_bcsstk15.png
 ```
 
 `src/rcm.{hpp,cpp}` calcula a permutação com `boost::cuthill_mckee_ordering`, a partir do grafo de adjacência de A
@@ -124,15 +141,15 @@ make spy_rcm MATRIZ=matrices/bcsstk14.mtx   # padrões lado a lado: figures/rcm_
 original que passa a ocupar a posição `k`. O programa `src/parte3.cpp` confere que `(PAPᵀ)(Px) = Pb` e grava a
 permutação em `results/rcm_<matriz>.txt`, que é usada pelo `scripts/spy_rcm.py`.
 
-O programa também resolve o sistema reordenado nas formas densa e em banda, com Cholesky se a matriz for SPD e com
-LU nos outros casos, e reporta a mediana de 5 execuções. O ganho previsto vem das contagens de operações:
-`(1/3)m³ ÷ m·b²` no Cholesky e `(2/3)m³ ÷ 2m·b_I·b_S` na LU. Os erros são medidos no sistema original, depois de
-recuperar `x` a partir de `Px`.
+O programa também resolve o sistema com LU (todas as matrizes) e com Cholesky (matrizes SPD), nas formas densa e em
+banda, sem RCM (matriz original) e com RCM (`PAPᵀ`), e reporta a mediana de 5 execuções. O ganho previsto vem das
+contagens de operações, pela fórmula do enunciado (`(2/3)m³ ÷ 2m·b_I·b_S` na LU, `(1/3)m³ ÷ m·b²` no Cholesky) e pela
+contagem exata das operações dos laços. Os erros são medidos no sistema original, depois de recuperar `x` a partir de `Px`.
 
 ## Parte 4 – Comparação com a LAPACK
 
 ```bash
-make parte4 MATRIZES="matrices/bcsstk14.mtx matrices/orsirr_1.mtx"   # results/parte4_matrizes.csv
+make parte4 MATRIZES="matrices/bcsstk15.mtx matrices/steam2.mtx"   # results/parte4_matrizes.csv
 make parte4_escala                                                   # results/parte4_escala.csv (alguns minutos)
 make graficos_escala                                                 # figures/parte4_escala.png e results/parte4_inclinacoes.csv
 ```
