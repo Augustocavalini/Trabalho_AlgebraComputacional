@@ -140,3 +140,97 @@ std::vector<double> resolver_sistema_lu(const DenseMatrix& LU, const std::vector
 
     return x;
 }
+
+
+void fatoracaoCholeskyLapacke(DenseMatrix& A) {
+    int m = A.m;
+
+    // A função LAPACKE_dpotrf sobrescreve o triângulo inferior de A com L.
+    // Ela devolve 0 se tudo deu certo, e k > 0 se o pivô da etapa k não for positivo.
+    lapack_int info = LAPACKE_dpotrf(LAPACK_COL_MAJOR, 'L', m, A.a.data(), m);
+    if (info > 0) {
+        throw std::runtime_error("a matriz não é SPD: pivô não positivo na etapa " + std::to_string(info));
+    }
+}
+
+
+void fatoracaoCholesky(DenseMatrix& A) {
+    int m = A.m;
+
+    int i, j, k;
+
+    for (k = 0; k < m; k++) {
+        // 1) Confere o pivô. Em uma matriz SPD, ele é sempre positivo.
+        //    A condição está escrita assim para que um valor NaN também seja rejeitado.
+        if (!(A(k, k) > 0.0)) {
+            throw std::runtime_error("a matriz não é SPD: pivô não positivo na etapa " + std::to_string(k + 1));
+        }
+
+        // 2) A diagonal de L é a raiz quadrada do pivô.
+        A(k, k) = std::sqrt(A(k, k));
+
+        // 3) Calcula o restante da coluna k de L.
+        for (i = k + 1; i < m; i++) {
+            A(i, k) = A(i, k) / A(k, k);
+        }
+
+        // 4) Atualiza o triângulo inferior das colunas à direita: a_ij = a_ij - l_ik * l_jk.
+        //    Como A é simétrica, cada coluna j só precisa das linhas i >= j.
+        //    O laço interno anda ao longo da coluna j, a ordem em que os
+        //    coeficientes estão guardados na memória.
+        for (j = k + 1; j < m; j++) {
+            double l_jk = A(j, k);
+
+            for (i = j; i < m; i++) {
+                A(i, j) -= A(i, k) * l_jk;
+            }
+        }
+    }
+}
+
+
+void substituicao_direta_cholesky(const DenseMatrix& L, std::vector<double>& y) {
+    int m = L.m;
+
+    // Resolve Ly = y de cima para baixo. Aqui a diagonal de L não vale 1, então é preciso dividir.
+    //
+    // Quando as parcelas à esquerda já foram descontadas, a divisão fornece y[j].
+    // Depois, descontamos l_ij * y[j] das equações abaixo.
+    for (int j = 0; j < m; j++) {
+        y[j] = y[j] / L(j, j);
+
+        for (int i = j + 1; i < m; i++) {
+            y[i] -= L(i, j) * y[j];
+        }
+    }
+}
+
+
+void substituicao_inversa_cholesky(const DenseMatrix& L, std::vector<double>& x) {
+    int m = L.m;
+
+    // Resolve L^T x = x de baixo para cima, usando apenas o triângulo inferior.
+    //
+    // A linha j de L^T é a coluna j de L. Por isso, somar as parcelas à direita da
+    // diagonal significa percorrer a coluna j de L, na ordem da memória.
+    for (int j = m - 1; j >= 0; j--) {
+        double soma = 0.0;
+
+        for (int i = j + 1; i < m; i++) {
+            soma += L(i, j) * x[i];
+        }
+
+        x[j] = (x[j] - soma) / L(j, j);
+    }
+}
+
+
+std::vector<double> resolver_sistema_cholesky(const DenseMatrix& L, const std::vector<double>& b) {
+    // Fazemos uma cópia do vetor b, porque cada etapa sobrescreve o vetor recebido.
+    std::vector<double> x = b;
+
+    substituicao_direta_cholesky(L, x);      // x passa a ser y, de Ly = b
+    substituicao_inversa_cholesky(L, x);     // x passa a ser a solução, de L^T x = y
+
+    return x;
+}
