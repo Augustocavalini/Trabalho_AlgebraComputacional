@@ -9,9 +9,9 @@ BUILD  = build
 COMMON = $(BUILD)/mmio.o $(BUILD)/matrix.o
 
 # Alvos que são comandos, e não nomes de arquivos
-.PHONY: all check parte1 testar parte3 spy spy_rcm clean
+.PHONY: all check parte1 testar parte3 parte4 parte4_escala graficos_escala spy spy_rcm clean
 
-all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/testar_metodos $(BUILD)/parte3
+all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/testar_metodos $(BUILD)/parte3 $(BUILD)/parte4
 
 # Nas regras abaixo, cada variável automática significa:
 #   $@  o arquivo que está sendo gerado (à esquerda do ":")
@@ -43,6 +43,9 @@ $(BUILD)/rcm.o: src/rcm.cpp src/rcm.hpp src/matrix.hpp | $(BUILD)
 $(BUILD)/parte3: src/parte3.cpp src/rcm.hpp src/parte2.hpp src/matrix.hpp $(BUILD)/rcm.o $(BUILD)/parte2.o $(COMMON) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc src/parte3.cpp $(BUILD)/rcm.o $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
 
+$(BUILD)/parte4: src/parte4.cpp src/parte2.hpp src/matrix.hpp $(BUILD)/parte2.o $(COMMON) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc src/parte4.cpp $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -66,6 +69,18 @@ parte3: $(BUILD)/parte3
 # Parte 3: padrões de esparsidade lado a lado em figures/ (rode antes make parte3)
 spy_rcm:
 	conda run -n tp-alc python scripts/spy_rcm.py $(MATRIZ)
+
+# Parte 4: todos os métodos contra a LAPACK. Uso: make parte4 MATRIZES="matrices/a.mtx matrices/b.mtx"
+MATRIZES = $(wildcard matrices/*.mtx)
+parte4: $(BUILD)/parte4
+	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/parte4 matrizes $(MATRIZES)
+
+# Parte 4: estudo de escala (leva alguns minutos) e gráficos log-log
+parte4_escala: $(BUILD)/parte4
+	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/parte4 escala
+
+graficos_escala:
+	conda run -n tp-alc python scripts/graficos_escala.py
 
 # Parte 1: spy plots em figures/
 spy:

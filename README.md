@@ -39,17 +39,19 @@ export OPENBLAS_NUM_THREADS=1
 
 ## Matrizes
 
-As matrizes não estão no repositório. Baixe-as da SuiteSparse Matrix Collection para `matrices/`:
+As matrizes não estão no repositório. Baixe-as do repositório Matrix Market do NIST para `matrices/`:
 
 ```bash
-scripts/download_matrices.sh HB/bcsstk14 HB/orsirr_1 HB/1138_bus
+scripts/download_matrices.sh Harwell-Boeing/bcsstruc2/bcsstk14 Harwell-Boeing/oilgen/orsirr_1 Harwell-Boeing/psadmit/1138_bus
 ```
 
-Se o download automático falhar, baixe o arquivo `.tar.gz` (formato Matrix Market) pela página de cada matriz e extraia o `.mtx` em `matrices/`:
+Páginas das matrizes:
 
-- https://sparse.tamu.edu/HB/bcsstk14
-- https://sparse.tamu.edu/HB/orsirr_1
-- https://sparse.tamu.edu/HB/1138_bus
+- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/bcsstruc2/bcsstk14.html
+- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/oilgen/orsirr_1.html
+- https://math.nist.gov/MatrixMarket/data/Harwell-Boeing/psadmit/1138_bus.html
+
+As mesmas matrizes estão na SuiteSparse Matrix Collection (https://sparse.tamu.edu), no grupo `HB`.
 
 ## Parte 1 – Leitura e caracterização
 
@@ -126,3 +128,16 @@ O programa também resolve o sistema reordenado nas formas densa e em banda, com
 LU nos outros casos, e reporta a mediana de 5 execuções. O ganho previsto vem das contagens de operações:
 `(1/3)m³ ÷ m·b²` no Cholesky e `(2/3)m³ ÷ 2m·b_I·b_S` na LU. Os erros são medidos no sistema original, depois de
 recuperar `x` a partir de `Px`.
+
+## Parte 4 – Comparação com a LAPACK
+
+```bash
+make parte4 MATRIZES="matrices/bcsstk14.mtx matrices/orsirr_1.mtx"   # results/parte4_matrizes.csv
+make parte4_escala                                                   # results/parte4_escala.csv (alguns minutos)
+make graficos_escala                                                 # figures/parte4_escala.png e results/parte4_inclinacoes.csv
+```
+
+Sem `MATRIZES=`, o `make parte4` usa todas as `matrices/*.mtx`. Cada método que se aplica à matriz é medido na nossa
+implementação e na rotina da LAPACK, com a mediana de 5 execuções, alternando as duas. `src/parte4.cpp` desliga a
+verificação de NaN do LAPACKE (`LAPACKE_set_nancheck(0)`), que não faz parte das rotinas da LAPACK. O limite do erro
+direto usa κ∞(A), estimado com `dgecon`, porque os erros são medidos na norma infinito.
