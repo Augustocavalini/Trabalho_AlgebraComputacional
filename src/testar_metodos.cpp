@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "metodos.hpp"
+#include "parte2.hpp"
 
 typedef std::vector<double> Vetor;
 

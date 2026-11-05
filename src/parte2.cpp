@@ -7,7 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "metodos.hpp"
+#include "parte2.hpp"
 
 
 

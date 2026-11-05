@@ -9,9 +9,9 @@ BUILD  = build
 COMMON = $(BUILD)/mmio.o $(BUILD)/matrix.o
 
 # Alvos que são comandos, e não nomes de arquivos
-.PHONY: all check parte1 testar spy clean
+.PHONY: all check parte1 testar parte3 spy spy_rcm clean
 
-all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/testar_metodos
+all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/testar_metodos $(BUILD)/parte3
 
 # Nas regras abaixo, cada variável automática significa:
 #   $@  o arquivo que está sendo gerado (à esquerda do ":")
@@ -31,11 +31,17 @@ $(BUILD)/check_env: src/check_env.cpp $(BUILD)/mmio.o | $(BUILD)
 $(BUILD)/parte1: src/parte1.cpp src/matrix.hpp $(COMMON) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc src/parte1.cpp $(COMMON) -o $@ $(LDLIBS)
 
-$(BUILD)/metodos.o: src/metodos.cpp src/metodos.hpp src/matrix.hpp | $(BUILD)
+$(BUILD)/parte2.o: src/parte2.cpp src/parte2.hpp src/matrix.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
 
-$(BUILD)/testar_metodos: src/testar_metodos.cpp src/metodos.hpp src/matrix.hpp $(BUILD)/metodos.o $(COMMON) | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Isrc src/testar_metodos.cpp $(BUILD)/metodos.o $(COMMON) -o $@ $(LDLIBS)
+$(BUILD)/testar_parte2: src/testar_parte2.cpp src/parte2.hpp src/matrix.hpp $(BUILD)/parte2.o $(COMMON) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc src/testar_parte2.cpp $(BUILD)/parte2.o $(COMMON) -o $@ $(LDLIBS)
+
+$(BUILD)/rcm.o: src/rcm.cpp src/rcm.hpp src/matrix.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
+
+$(BUILD)/parte3: src/parte3.cpp src/rcm.hpp src/matrix.hpp $(BUILD)/rcm.o $(COMMON) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -Isrc src/parte3.cpp $(BUILD)/rcm.o $(COMMON) -o $@ $(LDLIBS)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -51,6 +57,15 @@ parte1: $(BUILD)/parte1
 # Parte 2: testa todos os métodos contra a LAPACK em matrices/teste_10x10.mtx
 testar: $(BUILD)/testar_metodos
 	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/testar_metodos
+
+# Parte 3: bandas antes e depois do RCM. Uso: make parte3 MATRIZ=matrices/bcsstk14.mtx
+MATRIZ = matrices/teste_10x10.mtx
+parte3: $(BUILD)/parte3
+	./$(BUILD)/parte3 $(MATRIZ)
+
+# Parte 3: padrões de esparsidade lado a lado em figures/ (rode antes make parte3)
+spy_rcm:
+	conda run -n tp-alc python scripts/spy_rcm.py $(MATRIZ)
 
 # Parte 1: spy plots em figures/
 spy:

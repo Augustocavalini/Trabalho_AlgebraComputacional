@@ -1,4 +1,4 @@
-* [ ] 
+* [ ]
 
 # Trabalho_AlgebraComputacional
 
@@ -78,7 +78,7 @@ make testar                                        # usa matrices/teste_10x10.mt
 ./build/testar_metodos matrices/bcsstk14.mtx       # usa outra matriz
 ```
 
-`src/testar_metodos.cpp` resolve o sistema com solução exata `x = (1, ..., 1)` por LU densa, Cholesky denso,
+`src/parte2.cpp` resolve o sistema com solução exata `x = (1, ..., 1)` por LU densa, Cholesky denso,
 LU em banda, Cholesky em banda e Thomas, e compara cada solução com a da rotina correspondente da LAPACK.
 Um método que não se aplica à matriz aparece com o motivo. Os métodos estão em `src/metodos.{hpp,cpp}`.
 
@@ -109,3 +109,15 @@ Ela não fica no repositório, como as demais matrizes (ver `.gitignore`). Para 
 10 9 1
 10 10 4
 ```
+
+## Parte 3 – Reordenamento RCM
+
+```bash
+make parte3 MATRIZ=matrices/bcsstk14.mtx    # bandas e armazenamento antes e depois: results/parte3.csv
+make spy_rcm MATRIZ=matrices/bcsstk14.mtx   # padrões lado a lado: figures/rcm_bcsstk14.png
+```
+
+`src/rcm.{hpp,cpp}` calcula a permutação com `boost::cuthill_mckee_ordering`, a partir do grafo de adjacência de A
+(uma aresta sem direção para cada `a_ij != 0`, `i != j`), e forma `PAPᵀ`. Em `perm`, `perm[k]` é a linha da matriz
+original que passa a ocupar a posição `k`. O programa `src/parte3.cpp` confere que `(PAPᵀ)(Px) = Pb` e grava a
+permutação em `results/rcm_<matriz>.txt`, que é usada pelo `scripts/spy_rcm.py`.

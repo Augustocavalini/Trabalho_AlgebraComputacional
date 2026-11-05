@@ -2,3 +2,4 @@ build/
 matrices/*
 !matrices/.gitkeep
 *.o
+__pycache__/
