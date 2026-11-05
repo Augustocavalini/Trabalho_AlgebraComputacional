@@ -70,3 +70,42 @@ Sem argumentos, os dois usam todas as `matrices/*.mtx`; também aceitam arquivos
   numericamente, bandas `b_I = max(i-j)` e `b_S = max(j-i)` sobre os não nulos, e κ₁(A) estimado
   com `dlange` + `dpocon` se `dpotrf` tiver sucesso (matriz SPD) ou `dlange` + `dgetrf` + `dgecon`
   caso contrário.
+
+## Parte 2 – Validação dos métodos
+
+```bash
+make testar                                        # usa matrices/teste_10x10.mtx
+./build/testar_metodos matrices/bcsstk14.mtx       # usa outra matriz
+```
+
+`src/testar_metodos.cpp` resolve o sistema com solução exata `x = (1, ..., 1)` por LU densa, Cholesky denso,
+LU em banda, Cholesky em banda e Thomas, e compara cada solução com a da rotina correspondente da LAPACK.
+Um método que não se aplica à matriz aparece com o motivo. Os métodos estão em `src/metodos.{hpp,cpp}`.
+
+`matrices/teste_10x10.mtx` é uma matriz tridiagonal SPD, escolhida para funcionar em todos os métodos.
+Ela não fica no repositório, como as demais matrizes (ver `.gitignore`). Para recriá-la, grave em
+`matrices/teste_10x10.mtx`:
+
+```text
+%%MatrixMarket matrix coordinate real symmetric
+10 10 19
+1 1 4
+2 1 -1
+2 2 5
+3 2 2
+3 3 6
+4 3 -1
+4 4 4
+5 4 -2
+5 5 5
+6 5 1
+6 6 6
+7 6 -1
+7 7 4
+8 7 2
+8 8 5
+9 8 -2
+9 9 6
+10 9 1
+10 10 4
+```

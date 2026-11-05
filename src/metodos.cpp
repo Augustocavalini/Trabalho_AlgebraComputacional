@@ -10,6 +10,9 @@
 #include "metodos.hpp"
 
 
+
+// ---------------------  Parte 2  ---------------------
+// ---------------------  Etapa 1  ---------------------
 void fatoracaoLULapacke(DenseMatrix& A, std::vector<lapack_int>& pivos) {
     int m = A.m;
 
@@ -143,6 +146,10 @@ std::vector<double> resolver_sistema_lu(const DenseMatrix& LU, const std::vector
 }
 
 
+
+// ---------------------  Etapa 2  ---------------------
+
+
 void fatoracaoCholeskyLapacke(DenseMatrix& A) {
     int m = A.m;
 
@@ -235,6 +242,9 @@ std::vector<double> resolver_sistema_cholesky(const DenseMatrix& L, const std::v
 
     return x;
 }
+
+
+// ---------------------  Etapa 3  ---------------------
 
 
 void fatoracaoLuBanda(BandMatrix& A) {
@@ -425,4 +435,83 @@ void fatoracaoCholeskyBandaLapacke(BandMatrix& A) {
     if (info > 0) {
         throw std::runtime_error("a matriz não é SPD: pivô não positivo na etapa " + std::to_string(info));
     }
+}
+
+
+// ---------------------  Etapa 4  ---------------------
+
+
+void fatoracaoThomas(std::vector<double>& inferior, std::vector<double>& diagonal, const std::vector<double>& superior) {
+    int m = static_cast<int>(diagonal.size());
+
+    // O primeiro pivô é o próprio diagonal[0].
+    if (diagonal[0] == 0.0) {
+        throw std::runtime_error("pivô nulo no algoritmo de Thomas, etapa 1");
+    }
+
+    for (int k = 1; k < m; k++) {
+        // 1) O multiplicador substitui o coeficiente inferior da linha k.
+        inferior[k - 1] = inferior[k - 1] / diagonal[k - 1];
+
+        // 2) A eliminação só muda a diagonal: o superior da linha k não é afetado,
+        //    porque a linha k - 1 não tem coeficiente além de superior[k - 1].
+        diagonal[k] = diagonal[k] - inferior[k - 1] * superior[k - 1];
+
+        // 3) Sem pivoteamento, o novo pivô não pode ser nulo.
+        if (diagonal[k] == 0.0) {
+            throw std::runtime_error("pivô nulo no algoritmo de Thomas, etapa " + std::to_string(k + 1));
+        }
+    }
+}
+
+
+void substituicao_direta_thomas(const std::vector<double>& inferior, std::vector<double>& y) {
+    int m = static_cast<int>(y.size());
+
+    // Resolve Ly = y de cima para baixo. L tem 1 na diagonal e os multiplicadores
+    // logo abaixo dela, então cada equação usa apenas o valor anterior.
+    for (int k = 1; k < m; k++) {
+        y[k] = y[k] - inferior[k - 1] * y[k - 1];
+    }
+}
+
+
+void substituicao_inversa_thomas(const std::vector<double>& diagonal, const std::vector<double>& superior, std::vector<double>& x) {
+    int m = static_cast<int>(x.size());
+
+    // Resolve Ux = x de baixo para cima. A última equação só tem uma incógnita,
+    // e cada uma das outras usa apenas o valor seguinte.
+    x[m - 1] = x[m - 1] / diagonal[m - 1];
+
+    for (int k = m - 2; k >= 0; k--) {
+        x[k] = (x[k] - superior[k] * x[k + 1]) / diagonal[k];
+    }
+}
+
+
+std::vector<double> resolver_sistema_thomas(const std::vector<double>& inferior, const std::vector<double>& diagonal, const std::vector<double>& superior, const std::vector<double>& b) {
+    // Fazemos uma cópia do vetor b, porque cada etapa sobrescreve o vetor recebido.
+    std::vector<double> x = b;
+
+    substituicao_direta_thomas(inferior, x);            // x passa a ser y, de Ly = b
+    substituicao_inversa_thomas(diagonal, superior, x); // x passa a ser a solução, de Ux = y
+
+    return x;
+}
+
+
+std::vector<double> resolver_tridiagonal_lapacke(std::vector<double>& inferior, std::vector<double>& diagonal, std::vector<double>& superior, const std::vector<double>& b) {
+    int m = static_cast<int>(diagonal.size());
+
+    // Fazemos uma cópia do vetor b, porque a função LAPACKE_dgtsv o sobrescreve com a solução.
+    std::vector<double> x = b;
+
+    // A função LAPACKE_dgtsv faz fatoração e solução juntas, com pivoteamento.
+    // Ela devolve 0 se tudo deu certo, e > 0 se encontrou um pivô nulo.
+    lapack_int info = LAPACKE_dgtsv(LAPACK_COL_MAJOR, m, 1, inferior.data(), diagonal.data(), superior.data(), x.data(), m);
+    if (info > 0) {
+        throw std::runtime_error("a matriz é singular: U tem um zero na diagonal");
+    }
+
+    return x;
 }

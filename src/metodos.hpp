@@ -92,3 +92,28 @@ std::vector<double> resolver_sistema_cholesky_banda(const BandMatrix& L, const s
 // Cholesky em banda com o dpbtrf da LAPACK. Usado como referência. A deve vir de
 // montar_banda(A_densa, b, 0), como em fatoracaoCholeskyBanda.
 void fatoracaoCholeskyBandaLapacke(BandMatrix& A);
+
+// Algoritmo de Thomas: LU sem pivoteamento para matrizes tridiagonais, usando apenas três vetores.
+//
+//     | d0 s0  0  0 |      diagonal = (d0, d1, d2, d3)   m posições
+//     | i0 d1 s1  0 |      inferior = (i0, i1, i2)       m - 1 posições
+//     |  0 i1 d2 s2 |      superior = (s0, s1, s2)       m - 1 posições
+//     |  0  0 i2 d3 |
+//
+// Sobrescreve inferior com os multiplicadores de L e diagonal com a diagonal de U.
+// O vetor superior não muda, porque já é a parte de U acima da diagonal.
+// Se encontrar um pivô nulo, lança std::runtime_error.
+void fatoracaoThomas(std::vector<double>& inferior, std::vector<double>& diagonal, const std::vector<double>& superior);
+
+// Substituição direta: resolve Ly = b. Recebe b em y e devolve a solução em y.
+void substituicao_direta_thomas(const std::vector<double>& inferior, std::vector<double>& y);
+
+// Substituição inversa: resolve Ux = y. Recebe y em x e devolve a solução em x.
+void substituicao_inversa_thomas(const std::vector<double>& diagonal, const std::vector<double>& superior, std::vector<double>& x);
+
+// Resolve Ax = b a partir dos três vetores já fatorados por fatoracaoThomas.
+std::vector<double> resolver_sistema_thomas(const std::vector<double>& inferior, const std::vector<double>& diagonal, const std::vector<double>& superior, const std::vector<double>& b);
+
+// Resolve Ax = b com o dgtsv da LAPACK, que faz fatoração e solução juntas, com pivoteamento.
+// Usada como referência. Sobrescreve os três vetores.
+std::vector<double> resolver_tridiagonal_lapacke(std::vector<double>& inferior, std::vector<double>& diagonal, std::vector<double>& superior, const std::vector<double>& b);
