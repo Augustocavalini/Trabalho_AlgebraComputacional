@@ -9,9 +9,9 @@ BUILD  = build
 COMMON = $(BUILD)/mmio.o $(BUILD)/matrix.o
 
 # Alvos que são comandos, e não nomes de arquivos
-.PHONY: all check parte1 comparar_lu spy clean
+.PHONY: all check parte1 spy clean
 
-all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/comparar_lu
+all: $(BUILD)/check_env $(BUILD)/parte1 $(BUILD)/metodos.o
 
 # Nas regras abaixo, cada variável automática significa:
 #   $@  o arquivo que está sendo gerado (à esquerda do ":")
@@ -34,9 +34,6 @@ $(BUILD)/parte1: src/parte1.cpp src/matrix.hpp $(COMMON) | $(BUILD)
 $(BUILD)/metodos.o: src/metodos.cpp src/metodos.hpp src/matrix.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -Isrc -c $< -o $@
 
-$(BUILD)/comparar_lu: src/comparar_lu.cpp src/metodos.hpp src/matrix.hpp $(BUILD)/metodos.o $(COMMON) | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Isrc src/comparar_lu.cpp $(BUILD)/metodos.o $(COMMON) -o $@ $(LDLIBS)
-
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -47,10 +44,6 @@ check: $(BUILD)/check_env
 # Parte 1: tabela de caracterização em results/parte1.csv
 parte1: $(BUILD)/parte1
 	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/parte1
-
-# Tempo de resolver Ax = b com o LU da LAPACK e com o nosso (results/comparar_lu.csv)
-comparar_lu: $(BUILD)/comparar_lu
-	OPENBLAS_NUM_THREADS=1 ./$(BUILD)/comparar_lu
 
 # Parte 1: spy plots em figures/
 spy:
