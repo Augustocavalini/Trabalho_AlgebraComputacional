@@ -1,5 +1,6 @@
 #include "matrix.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <stdexcept>
 
@@ -162,4 +163,42 @@ std::vector<std::vector<double>> montar_matriz(const DenseMatrix& A) {
     }
 
     return matriz;
+}
+
+void calcular_bandas(const DenseMatrix& A, int& bI, int& bS) {
+    int m = A.m;
+    bI = 0;
+    bS = 0;
+
+    for (int j = 0; j < m; j++) {
+        for (int i = 0; i < m; i++) {
+            if (A(i, j) != 0.0) {
+                // Abaixo da diagonal: a distância até ela é i - j.
+                if (i - j > bI) {
+                    bI = i - j;
+                }
+                // Acima da diagonal: a distância até ela é j - i.
+                if (j - i > bS) {
+                    bS = j - i;
+                }
+            }
+        }
+    }
+}
+
+BandMatrix montar_banda(const DenseMatrix& A, int bI, int bS) {
+    int m = A.m;
+    BandMatrix banda(m, bI, bS);
+
+    for (int j = 0; j < m; j++) {
+        // Na coluna j, a banda vai da linha j - bS até a linha j + bI, sem sair da matriz.
+        int primeira_linha = std::max(0, j - bS);
+        int ultima_linha = std::min(m - 1, j + bI);
+
+        for (int i = primeira_linha; i <= ultima_linha; i++) {
+            banda(i, j) = A(i, j);
+        }
+    }
+
+    return banda;
 }

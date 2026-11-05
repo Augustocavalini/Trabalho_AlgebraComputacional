@@ -60,6 +60,71 @@ struct DenseMatrix {
     }
 };
 
+// Matriz em banda: guarda só as diagonais entre a banda inferior bI e a banda superior bS.
+//
+// O arranjo é o mesmo da LAPACK. Cada coluna da matriz vira uma coluna de um arranjo com
+// bI + bS + 1 linhas, e cada diagonal da matriz vira uma linha desse arranjo. Exemplo com
+// m = 4, bI = 1 e bS = 1 (as posições marcadas com * nunca são usadas):
+//
+//     | a00 a01  0   0  |                 |  *  a01 a12 a23 |   diagonal superior
+//     | a10 a11 a12  0  |   é guardada    | a00 a11 a22 a33 |   diagonal principal
+//     |  0  a21 a22 a23 |   como          | a10 a21 a32  *  |   diagonal inferior
+//     |  0   0  a32 a33 |
+//
+// As colunas desse arranjo ficam uma depois da outra no vetor a, que tem
+// (bI + bS + 1) * m posições. Só se pode acessar A(i, j) dentro da banda, isto é,
+// com i - j <= bI e j - i <= bS.
+struct BandMatrix {
+    int m;                  // número de linhas (e de colunas) da matriz
+    int bI;                 // largura de banda inferior
+    int bS;                 // largura de banda superior
+    int linhas;             // número de linhas do arranjo: bI + bS + 1
+    std::vector<double> a;  // os coeficientes da banda, coluna por coluna
+
+    // Cria uma matriz em banda com todos os coeficientes zerados.
+    BandMatrix(int dimensao, int banda_inferior, int banda_superior) {
+        m = dimensao;
+        bI = banda_inferior;
+        bS = banda_superior;
+        linhas = bI + bS + 1;
+
+        int total_de_posicoes = linhas * m;
+        a.assign(total_de_posicoes, 0.0);
+    }
+
+    // Converte (linha i, coluna j) da matriz na posição correspondente do vetor a.
+    //
+    // Antes da coluna j existem j colunas do arranjo. Dentro da coluna j, a diagonal
+    // principal fica na linha bS do arranjo, e cada passo para baixo na matriz
+    // é também um passo para baixo no arranjo.
+    int posicao(int i, int j) const {
+        int coeficientes_antes_da_coluna = j * linhas;
+        int linha_no_arranjo = bS + i - j;
+        int posicao_no_vetor = coeficientes_antes_da_coluna + linha_no_arranjo;
+        return posicao_no_vetor;
+    }
+
+    // Permite escrever na banda com a sintaxe A(i, j), por exemplo: A(2, 1) = 5.0;
+    double& operator()(int i, int j) {
+        int p = posicao(i, j);
+        return a[p];
+    }
+
+    // Permite ler a banda com a mesma sintaxe, por exemplo: double v = A(2, 1);
+    double operator()(int i, int j) const {
+        int p = posicao(i, j);
+        return a[p];
+    }
+};
+
+// Calcula as larguras de banda de A: bI = max(i - j) e bS = max(j - i) sobre os não nulos.
+void calcular_bandas(const DenseMatrix& A, int& bI, int& bS);
+
+// Copia para o armazenamento em banda os coeficientes de A dentro das larguras pedidas.
+// Coeficientes fora dessas larguras não são copiados. Isso é usado de propósito no Cholesky
+// em banda, que guarda apenas o triângulo inferior: montar_banda(A, b, 0).
+BandMatrix montar_banda(const DenseMatrix& A, int bI, int bS);
+
 // Conteúdo de um arquivo Matrix Market já montado na forma densa.
 struct MtxFile {
     std::string name;      // nome do arquivo, sem diretório e sem extensão

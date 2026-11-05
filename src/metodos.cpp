@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -233,4 +234,195 @@ std::vector<double> resolver_sistema_cholesky(const DenseMatrix& L, const std::v
     substituicao_inversa_cholesky(L, x);     // x passa a ser a solução, de L^T x = y
 
     return x;
+}
+
+
+void fatoracaoLuBanda(BandMatrix& A) {
+    int m = A.m;
+
+    int i, j, k;
+
+    for (k = 0; k < m; k++) {
+        // 1) Sem pivoteamento, o pivô é o próprio A(k, k), e ele não pode ser nulo.
+        if (A(k, k) == 0.0) {
+            throw std::runtime_error("pivô nulo na LU em banda, etapa " + std::to_string(k + 1));
+        }
+
+        // Só há coeficientes não nulos dentro da banda. Sem trocas de linha, L mantém a
+        // banda inferior de A e U mantém a banda superior, então nada é criado fora delas.
+        int ultima_linha = std::min(m - 1, k + A.bI);
+        int ultima_coluna = std::min(m - 1, k + A.bS);
+
+        // 2) Calcula os multiplicadores da coluna k e os guarda em A(i, k).
+        for (i = k + 1; i <= ultima_linha; i++) {
+            A(i, k) = A(i, k) / A(k, k);
+        }
+
+        // 3) Atualiza as colunas à direita que a linha k alcança, uma de cada vez.
+        for (j = k + 1; j <= ultima_coluna; j++) {
+            double valor_da_linha_k = A(k, j);
+
+            for (i = k + 1; i <= ultima_linha; i++) {
+                A(i, j) -= A(i, k) * valor_da_linha_k;
+            }
+        }
+    }
+}
+
+
+void substituicao_direta_banda(const BandMatrix& LU, std::vector<double>& y) {
+    int m = LU.m;
+
+    // Resolve Ly = y de cima para baixo. A diagonal de L vale 1, então não há divisão.
+    // Cada y[j] só afeta as bI equações seguintes, as que a coluna j de L alcança.
+    for (int j = 0; j < m; j++) {
+        int ultima_linha = std::min(m - 1, j + LU.bI);
+
+        for (int i = j + 1; i <= ultima_linha; i++) {
+            y[i] -= LU(i, j) * y[j];
+        }
+    }
+}
+
+
+void substituicao_inversa_banda(const BandMatrix& LU, std::vector<double>& x) {
+    int m = LU.m;
+
+    // Resolve Ux = x de baixo para cima. Cada x[j] só afeta as bS equações
+    // anteriores, as que a coluna j de U alcança.
+    for (int j = m - 1; j >= 0; j--) {
+        x[j] = x[j] / LU(j, j);
+
+        int primeira_linha = std::max(0, j - LU.bS);
+
+        for (int i = primeira_linha; i < j; i++) {
+            x[i] -= LU(i, j) * x[j];
+        }
+    }
+}
+
+
+std::vector<double> resolver_sistema_lu_banda(const BandMatrix& LU, const std::vector<double>& b) {
+    // Fazemos uma cópia do vetor b, porque cada etapa sobrescreve o vetor recebido.
+    std::vector<double> x = b;
+
+    substituicao_direta_banda(LU, x);      // x passa a ser y, de Ly = b
+    substituicao_inversa_banda(LU, x);     // x passa a ser a solução, de Ux = y
+
+    return x;
+}
+
+
+void fatoracaoLuBandaLapacke(BandMatrix& A, std::vector<lapack_int>& pivos) {
+    // O dgbtrf faz pivoteamento e por isso precisa de bI posições extras acima da banda.
+    // Ele espera a banda superior original (ku) separada dessas posições extras.
+    int ku = A.bS - A.bI;
+    if (ku < 0) {
+        throw std::runtime_error("dgbtrf: monte a matriz com montar_banda(A, bI, bI + bS)");
+    }
+
+    // A função LAPACKE_dgbtrf devolve 0 se tudo deu certo, e > 0 se encontrou um pivô nulo.
+    lapack_int info = LAPACKE_dgbtrf(LAPACK_COL_MAJOR, A.m, A.m, A.bI, ku, A.a.data(), A.linhas, pivos.data());
+    if (info > 0) {
+        throw std::runtime_error("a matriz é singular: U tem um zero na diagonal");
+    }
+}
+
+
+void fatoracaoCholeskyBanda(BandMatrix& A) {
+    int m = A.m;
+    int b = A.bI;
+
+    // Esta função só guarda o triângulo inferior.
+    if (A.bS != 0) {
+        throw std::runtime_error("Cholesky em banda: monte a matriz com montar_banda(A, b, 0)");
+    }
+
+    int i, j, k;
+
+    for (k = 0; k < m; k++) {
+        // 1) Confere o pivô. A condição está escrita assim para rejeitar também um NaN.
+        if (!(A(k, k) > 0.0)) {
+            throw std::runtime_error("a matriz não é SPD: pivô não positivo na etapa " + std::to_string(k + 1));
+        }
+
+        // 2) A diagonal de L é a raiz quadrada do pivô.
+        A(k, k) = std::sqrt(A(k, k));
+
+        // A coluna k só alcança as b linhas seguintes.
+        int ultima_linha = std::min(m - 1, k + b);
+
+        // 3) Calcula o restante da coluna k de L.
+        for (i = k + 1; i <= ultima_linha; i++) {
+            A(i, k) = A(i, k) / A(k, k);
+        }
+
+        // 4) Atualiza o triângulo inferior das colunas alcançadas: a_ij = a_ij - l_ik * l_jk.
+        for (j = k + 1; j <= ultima_linha; j++) {
+            double l_jk = A(j, k);
+
+            for (i = j; i <= ultima_linha; i++) {
+                A(i, j) -= A(i, k) * l_jk;
+            }
+        }
+    }
+}
+
+
+void substituicao_direta_cholesky_banda(const BandMatrix& L, std::vector<double>& y) {
+    int m = L.m;
+
+    // Resolve Ly = y de cima para baixo. Aqui a diagonal de L não vale 1, então é preciso dividir.
+    for (int j = 0; j < m; j++) {
+        y[j] = y[j] / L(j, j);
+
+        int ultima_linha = std::min(m - 1, j + L.bI);
+
+        for (int i = j + 1; i <= ultima_linha; i++) {
+            y[i] -= L(i, j) * y[j];
+        }
+    }
+}
+
+
+void substituicao_inversa_cholesky_banda(const BandMatrix& L, std::vector<double>& x) {
+    int m = L.m;
+
+    // Resolve L^T x = x de baixo para cima. A linha j de L^T é a coluna j de L,
+    // que só tem coeficientes até a linha j + b.
+    for (int j = m - 1; j >= 0; j--) {
+        int ultima_linha = std::min(m - 1, j + L.bI);
+
+        double soma = 0.0;
+
+        for (int i = j + 1; i <= ultima_linha; i++) {
+            soma += L(i, j) * x[i];
+        }
+
+        x[j] = (x[j] - soma) / L(j, j);
+    }
+}
+
+
+std::vector<double> resolver_sistema_cholesky_banda(const BandMatrix& L, const std::vector<double>& b) {
+    // Fazemos uma cópia do vetor b, porque cada etapa sobrescreve o vetor recebido.
+    std::vector<double> x = b;
+
+    substituicao_direta_cholesky_banda(L, x);      // x passa a ser y, de Ly = b
+    substituicao_inversa_cholesky_banda(L, x);     // x passa a ser a solução, de L^T x = y
+
+    return x;
+}
+
+
+void fatoracaoCholeskyBandaLapacke(BandMatrix& A) {
+    if (A.bS != 0) {
+        throw std::runtime_error("dpbtrf: monte a matriz com montar_banda(A, b, 0)");
+    }
+
+    // A função LAPACKE_dpbtrf devolve 0 se tudo deu certo, e k > 0 se o pivô da etapa k não for positivo.
+    lapack_int info = LAPACKE_dpbtrf(LAPACK_COL_MAJOR, 'L', A.m, A.bI, A.a.data(), A.linhas);
+    if (info > 0) {
+        throw std::runtime_error("a matriz não é SPD: pivô não positivo na etapa " + std::to_string(info));
+    }
 }

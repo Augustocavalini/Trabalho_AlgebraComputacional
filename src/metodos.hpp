@@ -51,3 +51,44 @@ void substituicao_inversa_cholesky(const DenseMatrix& L, std::vector<double>& x)
 // Resolve Ax = b a partir de uma fatoração já calculada, com as substituições direta e
 // inversa. A fatoração pode vir de fatoracaoCholesky ou de fatoracaoCholeskyLapacke.
 std::vector<double> resolver_sistema_cholesky(const DenseMatrix& L, const std::vector<double>& b);
+
+// Nossa LU em banda, sem pivoteamento: A = LU.
+//
+// L e U sobrescrevem A dentro da própria banda: L fica nas bI diagonais inferiores, com a
+// diagonal valendo 1 sem ser guardada, e U nas demais. Se encontrar um pivô nulo, lança
+// std::runtime_error. Sem pivoteamento, pivôs pequenos podem gerar erros grandes.
+void fatoracaoLuBanda(BandMatrix& A);
+
+// Substituição direta, restrita à banda: resolve Ly = b. Recebe b em y e devolve a solução em y.
+void substituicao_direta_banda(const BandMatrix& LU, std::vector<double>& y);
+
+// Substituição inversa, restrita à banda: resolve Ux = y. Recebe y em x e devolve a solução em x.
+void substituicao_inversa_banda(const BandMatrix& LU, std::vector<double>& x);
+
+// Resolve Ax = b a partir de uma fatoração de fatoracaoLuBanda.
+std::vector<double> resolver_sistema_lu_banda(const BandMatrix& LU, const std::vector<double>& b);
+
+// Fatoração em banda com o dgbtrf da LAPACK, que faz pivoteamento. Usada como referência.
+// A deve vir de montar_banda(A_densa, bI, bI + bS), que reserva as posições extras exigidas
+// (2bI + bS + 1 linhas). O vetor pivos deve ter m posições. A solução usa LAPACKE_dgbtrs.
+void fatoracaoLuBandaLapacke(BandMatrix& A, std::vector<lapack_int>& pivos);
+
+// Nosso Cholesky em banda, A = LL^T, para matrizes SPD.
+//
+// A deve vir de montar_banda(A_densa, b, 0), que guarda só o triângulo inferior
+// (b + 1 linhas). L sobrescreve A. Se encontrar um pivô não positivo, a matriz não é SPD
+// e a função lança std::runtime_error, informando a etapa, contada a partir de 1.
+void fatoracaoCholeskyBanda(BandMatrix& A);
+
+// Substituição direta, restrita à banda: resolve Ly = b. Recebe b em y e devolve a solução em y.
+void substituicao_direta_cholesky_banda(const BandMatrix& L, std::vector<double>& y);
+
+// Substituição inversa, restrita à banda: resolve L^T x = y. Recebe y em x e devolve a solução em x.
+void substituicao_inversa_cholesky_banda(const BandMatrix& L, std::vector<double>& x);
+
+// Resolve Ax = b a partir de uma fatoração de fatoracaoCholeskyBanda ou fatoracaoCholeskyBandaLapacke.
+std::vector<double> resolver_sistema_cholesky_banda(const BandMatrix& L, const std::vector<double>& b);
+
+// Cholesky em banda com o dpbtrf da LAPACK. Usado como referência. A deve vir de
+// montar_banda(A_densa, b, 0), como em fatoracaoCholeskyBanda.
+void fatoracaoCholeskyBandaLapacke(BandMatrix& A);
