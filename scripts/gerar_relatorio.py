@@ -304,6 +304,29 @@ def main():
         "em primeira ordem, erro ≤ κ(A) × resíduo."
     ))
 
+    adicionar(p(
+        "<b>Custos previstos.</b> Conto uma operação de ponto flutuante por soma, subtração, multiplicação ou divisão, só nos termos dominantes, "
+        "sem acessos à memória. Essas contagens comparam os métodos, mas não dão os tempos, que dependem também da implementação e do "
+        "processador [1, 3]. A banda é b<sub>I</sub> (inferior) e b<sub>S</sub> (superior), com a<sub>ij</sub> = 0 se i − j &gt; b<sub>I</sub> "
+        "ou j − i &gt; b<sub>S</sub>; no Cholesky, b é a semibanda."
+    ))
+    adicionar(KeepTogether([
+        p(f"{rotulo('Tabela')} Custo previsto da fatoração e armazenamento de cada método (m = ordem da matriz).", LEGENDA_TABELA),
+        tabela(["Método", "Operações na fatoração", "Posições guardadas"], [
+            ["LU densa (pivoteamento parcial)", "(2/3)m³", "m²"],
+            ["Cholesky denso", "(1/3)m³", "m²"],
+            ["LU em banda (sem pivoteamento)", "≈ 2m·b<sub>I</sub>·b<sub>S</sub>", "(b<sub>I</sub> + b<sub>S</sub> + 1)m"],
+            ["Cholesky em banda", "≈ m·b²", "(b + 1)m"],
+            ["Thomas (tridiagonal)", "≈ 8m (fatoração + solução)", "3m"],
+        ], [5.6, 5.4, 4.6]),
+    ]))
+    adicionar(p(
+        "O <b>RCM</b> (<i>reverse Cuthill-McKee</i>) é uma heurística: percorre o grafo de A em largura, visitando os vizinhos por grau crescente, "
+        "e inverte a ordem obtida [2]. Ele não garante a menor banda possível, nem ganho em toda matriz. A permutação não muda a solução, "
+        "que é recuperada desfazendo-a, e preserva κ(A), pois as mesmas permutações valem para linhas e colunas. O que muda é a ordem das "
+        "operações, e por isso o custo, a memória e, na LU sem pivoteamento, o comportamento numérico."
+    ))
+
     # 3. Implementações
     adicionar(p("3. Implementações", SECAO))
     adicionar(p(
@@ -484,6 +507,74 @@ def main():
         f"{sci(num(t3('bcsstk15', 'LU', 'RCM'), 'tempo_rcm_s'))} s na bcsstk15, incluindo a montagem do grafo a partir da forma densa."
     ))
 
+    # Resumo e custo do RCM (usa só as colunas que já existem nos CSV)
+    pares = [(n, m) for (n, m, o) in casos if o == "original" and (n, m, "RCM") in tempos3]
+    MIB = 8 / 2 ** 20
+
+    def posicoes_banda(nome, metodo, ordem):
+        campo = "posicoes_lu" if metodo == "LU" else "posicoes_cholesky"
+        return num(bandas[(nome, ordem)], campo)
+
+    def banda_str(l):
+        return f"{l['bI']}" if l["bI"] == l["bS"] else f"{l['bI']}/{l['bS']}"
+
+    linhas = []
+    for nome, metodo in pares:
+        o, r = t3(nome, metodo, "original"), t3(nome, metodo, "RCM")
+        linhas.append([
+            nome, metodo, f"{banda_str(o)} → {banda_str(r)}",
+            f"{fixo(posicoes_banda(nome, metodo, 'original') * MIB)} → {fixo(posicoes_banda(nome, metodo, 'RCM') * MIB)}",
+            f"{sci(num(o, 'fatoracao_banda_s'), 2)} → {sci(num(r, 'fatoracao_banda_s'), 2)}",
+            fixo(num(o, "fatoracao_banda_s") / num(r, "fatoracao_banda_s")),
+            fixo(num(o, "flops_banda_exata") / num(r, "flops_banda_exata")),
+        ])
+    sep_pares = [k for k in range(1, len(pares)) if pares[k][0] != pares[k - 1][0]]
+    adicionar(p("Resumo e custo do RCM", SUBSECAO))
+    adicionar(KeepTogether([
+        p(f"{rotulo('Tabela')} Efeito do RCM na fatoração em banda implementada; cada célula mostra o valor sem RCM → com RCM. "
+          "A banda é b<sub>I</sub>/b<sub>S</sub> (um só número quando são iguais) e a memória é a da forma em banda, em MiB, com 8 bytes por posição. "
+          "S<sub>fat</sub> é o tempo sem RCM dividido pelo tempo com RCM, e S<sub>ops</sub> faz a mesma razão com as contagens exatas de operações. "
+          "Valores acima de 1 indicam que o RCM ajudou; abaixo de 1, que atrapalhou.", LEGENDA_TABELA),
+        tabela(["Matriz", "Método", "Banda", "Memória (MiB)", "Fatoração em banda (s)", "S<sub>fat</sub>", "S<sub>ops</sub>"],
+               linhas, [1.8, 1.6, 2.4, 3.4, 4.2, 1.4, 1.4], alinhar_esquerda=(0, 1), separadores=sep_pares),
+    ]))
+
+    linhas = []
+    compensa_banda, compensa_densa = [], []
+    for nome, metodo in pares:
+        o, r = t3(nome, metodo, "original"), t3(nome, metodo, "RCM")
+        total_rcm = num(r, "tempo_rcm_s") + num(r, "fatoracao_banda_s") + num(r, "solucao_banda_s")
+        ref_banda = num(o, "fatoracao_banda_s") + num(o, "solucao_banda_s")
+        ref_densa = num(o, "fatoracao_densa_s") + num(o, "solucao_densa_s")
+        if total_rcm < ref_banda:
+            compensa_banda.append((nome, metodo))
+        if total_rcm < ref_densa:
+            compensa_densa.append((nome, metodo))
+        linhas.append([
+            nome, metodo, sci(num(r, "tempo_rcm_s"), 2), sci(total_rcm, 2), sci(ref_banda, 2), sci(ref_densa, 2),
+            fixo(ref_banda / total_rcm), fixo(ref_densa / total_rcm),
+        ])
+    adicionar(KeepTogether([
+        p(f"{rotulo('Tabela')} Custo do pré-processamento para um único sistema. Total com RCM = tempo do RCM + fatoração + solução em banda "
+          "da matriz reordenada. As referências são a fatoração + solução em banda e densa na ordem original. "
+          "As duas últimas colunas são referência ÷ total com RCM: acima de 1, a reordenação compensa.", LEGENDA_TABELA),
+        tabela(["Matriz", "Método", "RCM (s)", "Total com RCM (s)", "Banda original (s)", "Densa original (s)", "Ganho sobre a banda", "Ganho sobre a densa"],
+               linhas, [1.8, 1.6, 1.9, 2.4, 2.4, 2.4, 2.2, 2.2], alinhar_esquerda=(0, 1), separadores=sep_pares),
+    ]))
+
+    def lista(itens):
+        return ", ".join(f"{n} ({m})" for n, m in itens) if itens else "nenhum caso"
+
+    adicionar(p(
+        "<b>O RCM compensa?</b> Os ganhos de fatoração não bastam para justificar uma reordenação: é preciso somar o custo de calculá-la. "
+        "Para um único sistema, o RCM vale a pena quando T<sub>RCM</sub> + T<sub>fat,RCM</sub> + T<sub>sol,RCM</sub> &lt; T<sub>fat,ref</sub> + T<sub>sol,ref</sub>. "
+        f"Em relação à fatoração em banda sem reordenar, isso ocorreu em: {lista(compensa_banda)}. "
+        f"Em relação à fatoração densa, ocorreu em: {lista(compensa_densa)}. "
+        "O tempo do RCM aqui inclui a montagem do grafo a partir da forma densa, então é uma estimativa pessimista do custo do algoritmo. "
+        "Se a mesma ordem for reaproveitada em vários sistemas com o mesmo padrão de esparsidade, o custo do RCM é pago uma só vez, "
+        "e o custo por sistema cai."
+    ))
+
     # 6. Parte 4
     adicionar(p("6. Parte 4: comparação com a LAPACK", SECAO))
     linhas = []
@@ -620,8 +711,17 @@ def main():
         f"As implementações se mostraram corretas: o maior resíduo é {sci(max(num(l, 'retroacao') for l in medicoes if l['implementacao'] == 'implementado'))}, no mesmo patamar da LAPACK. A LAPACK é de {faixa(razoes('LU densa'), 0)} vezes mais rápida na forma densa, mas a vantagem encolhe com a banda e quase desaparece "
         "no caso tridiagonal, o que mostra que contar operações não basta: a organização dos acessos à memória é decisiva, como mostra também a ordem dos laços. Por outro lado, escolher a estrutura certa pesa mais que a qualidade da implementação: "
         f"meu Cholesky em banda fatora a bcsstk15 em {sci(num(orig_ch, 'fatoracao_banda_s'), 2)} s, bem menos que os {sci(num(r4('bcsstk15', 'Cholesky densa', 'LAPACK'), 'fatoracao_s'), 2)} s do <font name='Mono'>dpotrf</font> denso. O RCM costuma ser um passo barato e muito vantajoso, mas o resultado depende da matriz, "
-        "como mostra a bcsstk15. O passo a passo para reproduzir cada tabela e figura está no README do código."
+        "como mostra a bcsstk15. O passo a passo para reproduzir cada tabela e figura está no README do código. "
+        f"Contando também o custo do RCM, a reordenação compensou em relação à fatoração em banda original em {lista(compensa_banda)}."
     ))
+
+    adicionar(p("Referências", SECAO))
+    for ref in (
+        "[1] G. H. Golub e C. F. Van Loan, <i>Matrix Computations</i>, 4ª ed., Johns Hopkins University Press, 2013.",
+        "[2] Y. Saad, <i>Iterative Methods for Sparse Linear Systems</i>, 2ª ed., SIAM, 2003.",
+        "[3] L. N. Trefethen e D. Bau, <i>Numerical Linear Algebra</i>, SIAM, 1997.",
+    ):
+        adicionar(p(ref))
 
     pasta = ROOT / "relatorio"
     pasta.mkdir(exist_ok=True)
